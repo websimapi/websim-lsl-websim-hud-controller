@@ -201,7 +201,7 @@
     <div class="container">
         <div class="header">
             <h1>LSL WebSim HUD Controller</h1>
-            <p>Advanced interface for Second Life HUD communication via LSL Bridge</p>
+            <p>Advanced interface for Second Life HUD communication</p>
         </div>
 
         <div class="status-panel">
@@ -221,10 +221,6 @@
                 <span class="status-label">Last Update:</span>
                 <span class="status-value" id="lastUpdate">Never</span>
             </div>
-            <div class="status-item">
-                <span class="status-label">Bridge Status:</span>
-                <span class="status-value" id="bridgeStatus">Not Available</span>
-            </div>
         </div>
 
         <div class="controls">
@@ -236,96 +232,24 @@
 
         <div class="script-section">
             <div class="script-header">
-                <span class="script-title">Enhanced LSL HUD Script</span>
+                <span class="script-title">Enhanced LSL WebSim HUD Script with Media Communication</span>
                 <button class="copy-btn" onclick="copyScript()">Copy Script</button>
             </div>
-            <div class="script-code" id="lslScript">// Enhanced LSL WebSim HUD Script
+            <div class="script-code" id="lslScript">// Enhanced LSL WebSim HUD Script with Media Communication
 // Place this script in your HUD object
-// This works with LSL Bridge in viewers like Firestorm
 
-integer LISTEN_CHANNEL = -1; // Bridge typically uses negative channels
+integer LISTEN_CHANNEL = 0;
 integer listenHandle;
-string currentUrl = "";
+string currentUrl = "https://websim.com/@api/lsl-websim-hud-controller";
 integer messageCount = 0;
 float lastHeartbeat = 0.0;
 integer isConnected = FALSE;
+key httpRequestId;
 
 // Configuration
 float HEARTBEAT_TIMEOUT = 30.0; // seconds
 integer DEBUG_MODE = TRUE;
 
-default {
-    state_entry() {
-        // Initialize the HUD
-        llOwnerSay("WebSim HUD initialized and ready for LSL Bridge.");
-        
-        // Listen on LSL Bridge channel
-        listenHandle = llListen(LISTEN_CHANNEL, "", NULL_KEY, "");
-        
-        // Also listen for owner commands on channel 0
-        llListen(0, "", llGetOwner(), "");
-        
-        // Set initial text if HUD has text capability
-        llSetText("WebSim HUD\nStatus: Waiting\nMessages: 0", <1,1,1>, 1.0);
-        
-        // Set a timer for heartbeat monitoring
-        llSetTimerEvent(5.0);
-    }
-    
-    listen(integer channel, string name, key id, string message) {
-        if (channel == LISTEN_CHANNEL) {
-            // Handle LSL Bridge messages
-            if (llSubStringIndex(message, "http") == 0) {
-                handleUrlMessage(message);
-            }
-            else if (llSubStringIndex(message, "HEARTBEAT") == 0) {
-                handleHeartbeat(message);
-            }
-            else if (llSubStringIndex(message, "TEST") == 0) {
-                handleTestMessage(message);
-            }
-            else if (llSubStringIndex(message, "STATUS") == 0) {
-                handleStatusRequest(message);
-            }
-            else {
-                // Handle unknown message types
-                if (DEBUG_MODE) {
-                    llOwnerSay("Bridge message received: " + message);
-                }
-            }
-            updateDisplay();
-        }
-        else if (channel == 0 && id == llGetOwner()) {
-            // Handle chat commands from owner
-            if (message == "/hud status") {
-                reportStatus();
-            }
-            else if (message == "/hud reset") {
-                llOwnerSay("Resetting HUD...");
-                llResetScript();
-            }
-            else if (message == "/hud debug") {
-                DEBUG_MODE = !DEBUG_MODE;
-                llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
-            }
-            else if (message == "/hud channel") {
-                llOwnerSay("Listening on channel: " + (string)LISTEN_CHANNEL);
-            }
-        }
-    }
-    
-    timer() {
-        // Check for heartbeat timeout
-        float currentTime = llGetTime();
-        if (isConnected && (currentTime - lastHeartbeat) > HEARTBEAT_TIMEOUT) {
-            isConnected = FALSE;
-            llOwnerSay("Connection timeout - no heartbeat received");
-            updateDisplay();
-        }
-    }
-}
-
-// Handle URL messages
 handleUrlMessage(string msg) {
     currentUrl = msg;
     messageCount++;
@@ -356,11 +280,30 @@ handleHeartbeat(string msg) {
 handleTestMessage(string msg) {
     messageCount++;
     llOwnerSay("Test message received: " + msg);
+    
+    // Send acknowledgment back to web page
+    sendToWebPage("ACK_TEST:" + msg);
 }
 
 // Handle status requests
 handleStatusRequest(string msg) {
     reportStatus();
+    sendToWebPage("STATUS_RESPONSE:" + getStatusString());
+}
+
+// Send message to web page
+sendToWebPage(string message) {
+    // Use JavaScript execution to send data back
+    llNavigateTo("javascript:if(window.receiveLSLMessage)window.receiveLSLMessage('" + message + "');", []);
+}
+
+// Get status as string for web communication
+string getStatusString() {
+    string status = "URL:" + currentUrl + "|";
+    status += "MESSAGES:" + (string)messageCount + "|";
+    status += "CONNECTED:" + (string)isConnected + "|";
+    status += "HEARTBEAT:" + (string)(llGetTime() - lastHeartbeat);
+    return status;
 }
 
 // Report current status
@@ -368,18 +311,34 @@ reportStatus() {
     llOwnerSay("=== HUD Status Report ===");
     llOwnerSay("Current URL: " + currentUrl);
     llOwnerSay("Messages received: " + (string)messageCount);
-    llOwnerSay("Connection: " + (isConnected ? "Active" : "Inactive"));
+    if (isConnected) {
+        llOwnerSay("Connection: Active");
+    } else {
+        llOwnerSay("Connection: Inactive");
+    }
+
     llOwnerSay("Last heartbeat: " + (string)(llGetTime() - lastHeartbeat) + "s ago");
     llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
-    llOwnerSay("Listen channel: " + (string)LISTEN_CHANNEL);
 }
 
 // Update HUD display
 updateDisplay() {
-    string status = isConnected ? "Connected" : "Disconnected";
+   string status;
+    if (isConnected) {
+        status = "Connected";
+    } else {
+        status = "Disconnected";
+    }
+
     string displayText = "WebSim HUD\nStatus: " + status + "\nMessages: " + (string)messageCount;
     
-    vector color = isConnected ? <0,1,0> : <1,0,0>;
+    vector color;
+    if (isConnected) {
+        color = <0,1,0>;
+    } else {
+        color = <1,0,0>;
+    }
+
     llSetText(displayText, color, 1.0);
 }
 
@@ -395,7 +354,165 @@ string extractDomain(string url) {
         return llGetSubString(url, start, -1);
     }
     return url;
+}
+
+default {
+    state_entry() {
+        // Initialize the HUD
+        llOwnerSay("WebSim HUD initialized and ready.");
+        llOwnerSay("Enable media on this prim and set URL to: " + currentUrl);
+        
+        // Set up listening for chat commands (optional)
+        listenHandle = llListen(LISTEN_CHANNEL, "", llGetOwner(), "");
+        
+        // Set initial text if HUD has text capability
+        llSetText("WebSim HUD\nStatus: Waiting\nMessages: 0", <1,1,1>, 1.0);
+        
+        // Set a timer for heartbeat monitoring
+        llSetTimerEvent(5.0);
+        
+        // Enable media events
+        llSetPrimMediaParams(0, [
+            PRIM_MEDIA_AUTO_PLAY, TRUE,
+            PRIM_MEDIA_AUTO_SCALE, TRUE,
+            PRIM_MEDIA_PERMS_INTERACT, PRIM_MEDIA_PERM_ANYONE,
+            PRIM_MEDIA_PERMS_CONTROL, PRIM_MEDIA_PERM_ANYONE
+        ]);
+    }
+    
+    // Handle media events from web page
+    changed(integer change) {
+        if (change & CHANGED_MEDIA) {
+            list mediaParams = llGetPrimMediaParams(0, [PRIM_MEDIA_CURRENT_URL]);
+            string mediaUrl = llList2String(mediaParams, 0);
+            
+            if (llSubStringIndex(mediaUrl, "lslbridge://") == 0) {
+                // Remove lslbridge:// prefix and decode
+                string command = llUnescapeURL(llGetSubString(mediaUrl, 12, -1));
+                
+                if (llSubStringIndex(command, "http") == 0) {
+                    handleUrlMessage(command);
+                }
+                else if (llSubStringIndex(command, "HEARTBEAT") == 0) {
+                    handleHeartbeat(command);
+                }
+                else if (llSubStringIndex(command, "TEST") == 0) {
+                    handleTestMessage(command);
+                }
+                else if (llSubStringIndex(command, "STATUS") == 0) {
+                    handleStatusRequest(command);
+                }
+                else {
+                    if (DEBUG_MODE) {
+                        llOwnerSay("Unknown media command: " + command);
+                    }
+                }
+                
+                updateDisplay();
+                
+                // Navigate back to the main page
+                llSetPrimMediaParams(0, [PRIM_MEDIA_CURRENT_URL, currentUrl]);
+            }
+        }
+    }
+    
+    link_message(integer sender, integer num, string msg, key id) {
+        // Keep this for backward compatibility with other scripts
+        if (llSubStringIndex(msg, "http") == 0) {
+            handleUrlMessage(msg);
+        }
+        else if (llSubStringIndex(msg, "HEARTBEAT") == 0) {
+            handleHeartbeat(msg);
+        }
+        else if (llSubStringIndex(msg, "TEST") == 0) {
+            handleTestMessage(msg);
+        }
+        else if (llSubStringIndex(msg, "STATUS") == 0) {
+            handleStatusRequest(msg);
+        }
+        else {
+            if (DEBUG_MODE) {
+                llOwnerSay("Unknown link message: " + msg);
+            }
+        }
+        
+        updateDisplay();
+    }
+    
+    listen(integer channel, string name, key id, string message) {
+        // Handle chat commands from owner
+        if (id == llGetOwner()) {
+            if (message == "/hud status") {
+                reportStatus();
+            }
+            else if (message == "/hud reset") {
+                llOwnerSay("Resetting HUD...");
+                llResetScript();
+            }
+            else if (message == "/hud debug") {
+                DEBUG_MODE = !DEBUG_MODE;
+                llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
+            }
+            else if (message == "/hud test") {
+                llOwnerSay("Sending test message to web page...");
+                sendToWebPage("TEST_FROM_LSL:" + (string)llGetUnixTime());
+            }
+        }
+    }
+    
+    timer() {
+        // Check for heartbeat timeout
+        float currentTime = llGetTime();
+        if (isConnected && (currentTime - lastHeartbeat) > HEARTBEAT_TIMEOUT) {
+            isConnected = FALSE;
+            llOwnerSay("Connection timeout - no heartbeat received");
+            updateDisplay();
+        }
+    }
 }</div>
+        </div>
+
+        <div class="script-section">
+            <div class="script-header">
+                <span class="script-title">UPDATED: LSL Bridge Setup Instructions</span>
+                <button class="copy-btn" onclick="copySetupInstructions()">Copy Instructions</button>
+            </div>
+            <div class="script-code" id="setupInstructions">UPDATED: LSL Bridge Setup Instructions
+
+METHOD 1 - Media Communication (Recommended for Browser-in-SL):
+1. Enable Media on a Prim in Second Life:
+   - Right-click on your HUD object
+   - Select "Edit" 
+   - Go to "Media" tab
+   - Check "Enable Media"
+   - Set Media Type to "Web Page"
+   - Set Home URL to: https://websim.com/@api/lsl-websim-hud-controller
+   - Check "Auto Play Media"
+   - Check "Auto Scale Media"
+   - Set "Allow Navigation & Interactivity" to "Anyone"
+
+2. Place the LSL script in your HUD object
+   - The script will automatically configure media settings
+   - Check local chat for confirmation messages
+
+IMPORTANT: This method works for Browser-in-Game -> HUD -> Browser-in-Game communication
+The browser runs inside Second Life's media system, allowing direct communication with LSL scripts.
+
+TESTING:
+1. Copy the LSL script above into your HUD
+2. Enable media on the HUD prim and set this page as the URL
+3. Click "Send Test Message" button
+4. Check local chat for "Test message received" confirmation
+5. Type "/hud status" in local chat for status report
+6. Type "/hud test" to send a message from LSL back to web page
+
+TROUBLESHOOTING:
+- If no communication: Ensure media is properly enabled and interactive
+- Check that the HUD prim has media enabled with correct permissions
+- Look for messages in local chat for debugging info
+- Make sure you're viewing this page through the HUD's media, not external browser
+
+Note: This creates a direct communication channel between the browser running in Second Life and the LSL script without requiring external servers.</div>
         </div>
 
         <div class="script-section">
@@ -416,46 +533,49 @@ string extractDomain(string url) {
         let isConnected = false;
         let heartbeatInterval;
 
-        // Enhanced data sending function with error handling
+        // Function to receive messages from LSL
+        window.receiveLSLMessage = function(message) {
+            addLogEntry('[LSL->Web] ' + message);
+            if (message.indexOf('STATUS_RESPONSE:') === 0) {
+                // Parse status response
+                const statusData = message.substring(16);
+                addLogEntry('[Status] ' + statusData);
+            }
+            showNotification('Message from LSL: ' + message.substring(0, 30) + '...');
+        };
+
+        // Simplified data sending function for media communication
         function sendDataToSL(data, messageType = 'URL') {
             try {
-                if (window.external && window.external.LLMessage) {
-                    // LSL Bridge sends data to listening objects on negative channels
-                    window.external.LLMessage(data);
-                    messageCount++;
-                    updateStatus();
-                    addLogEntry(`[${messageType}] Sent via LSL Bridge: ${data.substring(0, 50)}${data.length > 50 ? '...' : ''}`);
-                    showNotification(`${messageType} sent to HUD via LSL Bridge`);
-                    return true;
-                } else {
-                    addLogEntry('[ERROR] LSL Bridge not available - Make sure you are using Firestorm viewer with LSL Bridge enabled');
-                    showNotification('LSL Bridge not available', 'error');
-                    document.getElementById('bridgeStatus').textContent = 'Not Available';
-                    return false;
-                }
+                // Use media navigation method - this is the correct way for browser-in-SL to LSL communication
+                const mediaUrl = 'lslbridge://' + encodeURIComponent(data);
+                window.location.href = mediaUrl;
+                
+                messageCount++;
+                updateStatus();
+                addLogEntry(`[${messageType}] Sent: ${data.substring(0, 50)}${data.length > 50 ? '...' : ''}`);
+                showNotification(`${messageType} sent to LSL`);
+                
+                return true;
             } catch (error) {
                 addLogEntry(`[ERROR] Failed to send data: ${error.message}`);
-                showNotification('Send failed', 'error');
+                showNotification('Send failed: ' + error.message, 'error');
                 return false;
             }
         }
 
         // Auto-send current URL on page load
         window.onload = function() {
-            // Check if LSL Bridge is available
-            if (window.external && window.external.LLMessage) {
-                document.getElementById('bridgeStatus').textContent = 'Available';
+            addLogEntry('[System] Page loaded, initializing LSL communication...');
+            
+            setTimeout(() => {
                 const url = window.location.href;
                 if (sendDataToSL(url, 'URL')) {
                     isConnected = true;
                     startHeartbeat();
                 }
-                addLogEntry('[System] LSL Bridge detected and URL sent');
-            } else {
-                document.getElementById('bridgeStatus').textContent = 'Not Available';
-                addLogEntry('[System] LSL Bridge not available - browser-to-HUD communication requires Firestorm viewer');
-            }
-            updateStatus();
+                updateStatus();
+            }, 1000); // Wait 1 second for page to fully load
         };
 
         // Start heartbeat to maintain connection
@@ -483,17 +603,10 @@ string extractDomain(string url) {
 
         // Update status display
         function updateStatus() {
-            document.getElementById('connectionStatus').textContent = isConnected ? 'Connected' : 'Disconnected';
+            document.getElementById('connectionStatus').textContent = isConnected ? 'Connected' : 'Checking...';
             document.getElementById('currentUrl').textContent = window.location.href;
             document.getElementById('messageCount').textContent = messageCount;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
-            
-            // Update bridge status
-            if (window.external && window.external.LLMessage) {
-                document.getElementById('bridgeStatus').textContent = 'Available';
-            } else {
-                document.getElementById('bridgeStatus').textContent = 'Not Available';
-            }
         }
 
         // Log management
@@ -540,6 +653,23 @@ string extractDomain(string url) {
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
                 showNotification('LSL Script copied to clipboard!');
+            });
+        }
+
+        // Copy setup instructions function
+        function copySetupInstructions() {
+            const setupText = document.getElementById('setupInstructions').textContent;
+            navigator.clipboard.writeText(setupText).then(() => {
+                showNotification('Setup instructions copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = setupText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('Setup instructions copied to clipboard!');
             });
         }
 
