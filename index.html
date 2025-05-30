@@ -240,7 +240,7 @@
 
 integer LISTEN_CHANNEL = 0;
 integer listenHandle;
-string currentUrl = "";
+string currentUrl = "https://websim.com/@api/lsl-websim-hud-controller";
 integer messageCount = 0;
 float lastHeartbeat = 0.0;
 integer isConnected = FALSE;
@@ -248,6 +248,97 @@ integer isConnected = FALSE;
 // Configuration
 float HEARTBEAT_TIMEOUT = 30.0; // seconds
 integer DEBUG_MODE = TRUE;
+
+handleUrlMessage(string msg) {
+    currentUrl = msg;
+    messageCount++;
+    isConnected = TRUE;
+    lastHeartbeat = llGetTime();
+    
+    if (DEBUG_MODE) {
+        llOwnerSay("URL Updated: " + currentUrl);
+    }
+    
+    // You can add URL validation here
+    if (llSubStringIndex(currentUrl, "websim") != -1) {
+        llOwnerSay("WebSim URL detected: " + extractDomain(currentUrl));
+    }
+}
+
+// Handle heartbeat messages
+handleHeartbeat(string msg) {
+    lastHeartbeat = llGetTime();
+    isConnected = TRUE;
+    
+    if (DEBUG_MODE) {
+        llOwnerSay("Heartbeat received");
+    }
+}
+
+// Handle test messages
+handleTestMessage(string msg) {
+    messageCount++;
+    llOwnerSay("Test message received: " + msg);
+    
+    // Echo back a confirmation
+    // Note: This would require a way to send data back to the web interface
+    // For now, we just log it
+}
+
+// Handle status requests
+handleStatusRequest(string msg) {
+    reportStatus();
+}
+
+// Report current status
+reportStatus() {
+    llOwnerSay("=== HUD Status Report ===");
+    llOwnerSay("Current URL: " + currentUrl);
+    llOwnerSay("Messages received: " + (string)messageCount);
+    if (isConnected) {
+        llOwnerSay("Connection: Active");
+    } else {
+        llOwnerSay("Connection: Inactive");
+    }
+
+    llOwnerSay("Last heartbeat: " + (string)(llGetTime() - lastHeartbeat) + "s ago");
+    llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
+}
+
+// Update HUD display
+updateDisplay() {
+   string status;
+    if (isConnected) {
+        status = "Connected";
+    } else {
+        status = "Disconnected";
+    }
+
+    string displayText = "WebSim HUD\nStatus: " + status + "\nMessages: " + (string)messageCount;
+    
+    vector color;
+    if (isConnected) {
+        color = <0,1,0>;
+    } else {
+        color = <1,0,0>;
+    }
+
+    llSetText(displayText, color, 1.0);
+}
+
+// Extract domain from URL for cleaner display
+string extractDomain(string url) {
+    integer start = llSubStringIndex(url, "://");
+    if (start != -1) {
+        start += 3;
+        integer end = llSubStringIndex(llGetSubString(url, start, -1), "/");
+        if (end != -1) {
+            return llGetSubString(url, start, start + end - 1);
+        }
+        return llGetSubString(url, start, -1);
+    }
+    return url;
+}
 
 default {
     state_entry() {
@@ -314,82 +405,44 @@ default {
             updateDisplay();
         }
     }
-}
-
-// Handle URL messages
-handleUrlMessage(string msg) {
-    currentUrl = msg;
-    messageCount++;
-    isConnected = TRUE;
-    lastHeartbeat = llGetTime();
-    
-    if (DEBUG_MODE) {
-        llOwnerSay("URL Updated: " + currentUrl);
-    }
-    
-    // You can add URL validation here
-    if (llSubStringIndex(currentUrl, "websim") != -1) {
-        llOwnerSay("WebSim URL detected: " + extractDomain(currentUrl));
-    }
-}
-
-// Handle heartbeat messages
-handleHeartbeat(string msg) {
-    lastHeartbeat = llGetTime();
-    isConnected = TRUE;
-    
-    if (DEBUG_MODE) {
-        llOwnerSay("Heartbeat received");
-    }
-}
-
-// Handle test messages
-handleTestMessage(string msg) {
-    messageCount++;
-    llOwnerSay("Test message received: " + msg);
-    
-    // Echo back a confirmation
-    // Note: This would require a way to send data back to the web interface
-    // For now, we just log it
-}
-
-// Handle status requests
-handleStatusRequest(string msg) {
-    reportStatus();
-}
-
-// Report current status
-reportStatus() {
-    llOwnerSay("=== HUD Status Report ===");
-    llOwnerSay("Current URL: " + currentUrl);
-    llOwnerSay("Messages received: " + (string)messageCount);
-    llOwnerSay("Connection: " + (isConnected ? "Active" : "Inactive"));
-    llOwnerSay("Last heartbeat: " + (string)(llGetTime() - lastHeartbeat) + "s ago");
-    llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
-}
-
-// Update HUD display
-updateDisplay() {
-    string status = isConnected ? "Connected" : "Disconnected";
-    string displayText = "WebSim HUD\nStatus: " + status + "\nMessages: " + (string)messageCount;
-    
-    vector color = isConnected ? <0,1,0> : <1,0,0>;
-    llSetText(displayText, color, 1.0);
-}
-
-// Extract domain from URL for cleaner display
-string extractDomain(string url) {
-    integer start = llSubStringIndex(url, "://");
-    if (start != -1) {
-        start += 3;
-        integer end = llSubStringIndex(llGetSubString(url, start, -1), "/");
-        if (end != -1) {
-            return llGetSubString(url, start, start + end - 1);
-        }
-        return llGetSubString(url, start, -1);
-    }
-    return url;
 }</div>
+        </div>
+
+        <div class="script-section">
+            <div class="script-header">
+                <span class="script-title">Setup Instructions</span>
+                <button class="copy-btn" onclick="copySetupInstructions()">Copy Instructions</button>
+            </div>
+            <div class="script-code" id="setupInstructions">IMPORTANT: LSL Bridge Setup Instructions
+
+1. Enable Media on a Prim in Second Life:
+   - Right-click on your HUD object
+   - Select "Edit" 
+   - Go to "Media" tab
+   - Check "Enable Media"
+   - Set Media Type to "Web Page"
+   - Set Home URL to: https://websim.com/@api/lsl-websim-hud-controller
+   - Check "Auto Play Media"
+   - Check "Auto Scale Media"
+
+2. Enable LSL Bridge in Your Viewer:
+   - In Firestorm: Preferences > Firestorm > Bridge > Enable LSL Bridge
+   - In other viewers: Look for LSL Bridge or External Script options
+
+3. Allow Script to Access Internet:
+   - Make sure your land/parcel allows scripts
+   - Ensure HTTP requests are enabled for your object
+
+4. Alternative Setup - Use HTTP Requests:
+   - If LSL Bridge doesn't work, the script can be modified to use llHTTPRequest()
+   - Contact your HUD creator for HTTP-based version
+
+5. Testing:
+   - Copy the LSL script above into your HUD
+   - Visit this page with media enabled on the HUD
+   - You should see URL updates in local chat
+
+Note: LSL Bridge requires specific viewer support and may not work in all environments.</div>
         </div>
 
         <div class="script-section">
@@ -409,38 +462,78 @@ string extractDomain(string url) {
         let messageCount = 0;
         let isConnected = false;
         let heartbeatInterval;
+        let bridgeCheckAttempts = 0;
+        const MAX_BRIDGE_CHECKS = 5;
 
-        // Enhanced data sending function with error handling
-        function sendDataToSL(data, messageType = 'URL') {
-            try {
-                if (window.external && window.external.LLMessage) {
-                    window.external.LLMessage(data);
-                    messageCount++;
-                    updateStatus();
-                    addLogEntry(`[${messageType}] Sent: ${data.substring(0, 50)}${data.length > 50 ? '...' : ''}`);
-                    showNotification(`${messageType} sent successfully`);
-                    return true;
+        // Enhanced bridge detection with multiple checks
+        function checkLSLBridge() {
+            bridgeCheckAttempts++;
+            
+            // Multiple detection methods
+            const hasLLMessage = window.external && typeof window.external.LLMessage === 'function';
+            const hasLLBridge = window.LSLBridge !== undefined;
+            const hasNavigator = navigator.userAgent.indexOf('SecondLife') !== -1;
+            
+            if (hasLLMessage || hasLLBridge) {
+                addLogEntry('[Bridge] LSL Bridge detected and available');
+                return true;
+            } else if (hasNavigator) {
+                addLogEntry('[Bridge] Second Life viewer detected but bridge unavailable');
+                addLogEntry('[Bridge] Please enable LSL Bridge in viewer preferences');
+                return false;
+            } else {
+                addLogEntry(`[Bridge] LSL Bridge not detected (attempt ${bridgeCheckAttempts}/${MAX_BRIDGE_CHECKS})`);
+                if (bridgeCheckAttempts < MAX_BRIDGE_CHECKS) {
+                    setTimeout(checkLSLBridge, 2000); // Check again in 2 seconds
                 } else {
-                    addLogEntry('[ERROR] SL Bridge not available');
-                    showNotification('SL Bridge not available', 'error');
-                    return false;
+                    addLogEntry('[Bridge] Bridge detection failed - see setup instructions');
+                    showNotification('LSL Bridge not available - check setup', 'error');
                 }
-            } catch (error) {
-                addLogEntry(`[ERROR] Failed to send data: ${error.message}`);
-                showNotification('Send failed', 'error');
                 return false;
             }
         }
 
-        // Auto-send current URL on page load
-        window.onload = function() {
-            const url = window.location.href;
-            if (sendDataToSL(url, 'URL')) {
-                isConnected = true;
-                startHeartbeat();
+        // Enhanced data sending function with better error handling
+        function sendDataToSL(data, messageType = 'URL') {
+            try {
+                // Try multiple bridge methods
+                if (window.external && window.external.LLMessage) {
+                    window.external.LLMessage(data);
+                } else if (window.LSLBridge && window.LSLBridge.send) {
+                    window.LSLBridge.send(data);
+                } else {
+                    addLogEntry('[ERROR] No LSL Bridge method available');
+                    showNotification('LSL Bridge not available - check setup instructions', 'error');
+                    return false;
+                }
+                
+                messageCount++;
+                updateStatus();
+                addLogEntry(`[${messageType}] Sent: ${data.substring(0, 50)}${data.length > 50 ? '...' : ''}`);
+                showNotification(`${messageType} sent successfully`);
+                return true;
+            } catch (error) {
+                addLogEntry(`[ERROR] Failed to send data: ${error.message}`);
+                showNotification('Send failed: ' + error.message, 'error');
+                return false;
             }
-            updateStatus();
-            addLogEntry('[System] Page loaded and URL sent');
+        }
+
+        // Auto-send current URL on page load with bridge check
+        window.onload = function() {
+            addLogEntry('[System] Page loaded, checking for LSL Bridge...');
+            
+            // Check for LSL Bridge first
+            setTimeout(() => {
+                if (checkLSLBridge()) {
+                    const url = window.location.href;
+                    if (sendDataToSL(url, 'URL')) {
+                        isConnected = true;
+                        startHeartbeat();
+                    }
+                }
+                updateStatus();
+            }, 1000); // Wait 1 second for page to fully load
         };
 
         // Start heartbeat to maintain connection
@@ -521,6 +614,23 @@ string extractDomain(string url) {
             });
         }
 
+        // Copy setup instructions function
+        function copySetupInstructions() {
+            const setupText = document.getElementById('setupInstructions').textContent;
+            navigator.clipboard.writeText(setupText).then(() => {
+                showNotification('Setup instructions copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = setupText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('Setup instructions copied to clipboard!');
+            });
+        }
+
         // Notification system
         function showNotification(message, type = 'success') {
             const notification = document.getElementById('notification');
@@ -550,4 +660,3 @@ string extractDomain(string url) {
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
-
