@@ -528,6 +528,9 @@ Note: This creates a direct communication channel between the browser running in
 
     <div class="notification" id="notification"></div>
 
+    <!-- Hidden iframe for LSL bridge communication -->
+    <iframe id="lslBridge" style="display: none; width: 1px; height: 1px;" src="about:blank"></iframe>
+
     <script>
         let messageCount = 0;
         let isConnected = false;
@@ -544,12 +547,20 @@ Note: This creates a direct communication channel between the browser running in
             showNotification('Message from LSL: ' + message.substring(0, 30) + '...');
         };
 
-        // Simplified data sending function for media communication
+        // Fixed data sending function for media communication
         function sendDataToSL(data, messageType = 'URL') {
             try {
-                // Use media navigation method - this is the correct way for browser-in-SL to LSL communication
+                // Use hidden iframe method to prevent main page navigation issues
+                const iframe = document.getElementById('lslBridge');
                 const mediaUrl = 'lslbridge://' + encodeURIComponent(data);
-                window.location.href = mediaUrl;
+                
+                // Set iframe source instead of main window to prevent freezing
+                iframe.src = mediaUrl;
+                
+                // Reset iframe after short delay
+                setTimeout(() => {
+                    iframe.src = 'about:blank';
+                }, 100);
                 
                 messageCount++;
                 updateStatus();
@@ -575,15 +586,15 @@ Note: This creates a direct communication channel between the browser running in
                     startHeartbeat();
                 }
                 updateStatus();
-            }, 1000); // Wait 1 second for page to fully load
+            }, 2000); // Wait 2 seconds for page to fully load
         };
 
-        // Start heartbeat to maintain connection
+        // Start heartbeat to maintain connection - reduced frequency
         function startHeartbeat() {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(() => {
                 sendDataToSL('HEARTBEAT:' + Date.now(), 'HEARTBEAT');
-            }, 10000); // Every 10 seconds
+            }, 30000); // Every 30 seconds instead of 10
         }
 
         // Control functions
