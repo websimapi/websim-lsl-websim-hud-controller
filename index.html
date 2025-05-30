@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LSL WebSim HUD Controller</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .status-panel {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-left: 5px solid #667eea;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .status-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .status-value {
+            font-family: 'Courier New', monospace;
+            background: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .control-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .control-btn:active {
+            transform: translateY(-1px);
+        }
+
+        .script-section {
+            background: #1a1a1a;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .script-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .script-title {
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+            transform: scale(1.05);
+        }
+
+        .script-code {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .log-panel {
+            background: #000;
+            color: #00ff00;
+            padding: 20px;
+            border-radius: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            height: 200px;
+            overflow-y: auto;
+            border: 2px solid #333;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>LSL WebSim HUD Controller</h1>
+            <p>Advanced interface for Second Life HUD communication</p>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-item">
+                <span class="status-label">Connection Status:</span>
+                <span class="status-value" id="connectionStatus">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Current URL:</span>
+                <span class="status-value" id="currentUrl">Loading...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Messages Sent:</span>
+                <span class="status-value" id="messageCount">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Last Update:</span>
+                <span class="status-value" id="lastUpdate">Never</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn" onclick="sendTestMessage()">Send Test Message</button>
+            <button class="control-btn" onclick="sendUrlUpdate()">Update URL</button>
+            <button class="control-btn" onclick="sendHeartbeat()">Send Heartbeat</button>
+            <button class="control-btn" onclick="clearLog()">Clear Log</button>
+        </div>
+
+        <div class="script-section">
+            <div class="script-header">
+                <span class="script-title">Enhanced LSL HUD Script</span>
+                <button class="copy-btn" onclick="copyScript()">Copy Script</button>
+            </div>
+            <div class="script-code" id="lslScript">// Enhanced LSL WebSim HUD Script
+// Place this script in your HUD object
+
+integer LISTEN_CHANNEL = 0;
+integer listenHandle;
+string currentUrl = "";
+integer messageCount = 0;
+float lastHeartbeat = 0.0;
+integer isConnected = FALSE;
+
+// Configuration
+float HEARTBEAT_TIMEOUT = 30.0; // seconds
+integer DEBUG_MODE = TRUE;
+
+default {
+    state_entry() {
+        // Initialize the HUD
+        llOwnerSay("WebSim HUD initialized and ready.");
+        
+        // Set up listening for chat commands (optional)
+        listenHandle = llListen(LISTEN_CHANNEL, "", llGetOwner(), "");
+        
+        // Set initial text if HUD has text capability
+        llSetText("WebSim HUD\nStatus: Waiting\nMessages: 0", <1,1,1>, 1.0);
+        
+        // Set a timer for heartbeat monitoring
+        llSetTimerEvent(5.0);
+    }
+    
+    link_message(integer sender, integer num, string msg, key id) {
+        // Parse incoming messages from web interface
+        if (llSubStringIndex(msg, "http") == 0) {
+            handleUrlMessage(msg);
+        }
+        else if (llSubStringIndex(msg, "HEARTBEAT") == 0) {
+            handleHeartbeat(msg);
+        }
+        else if (llSubStringIndex(msg, "TEST") == 0) {
+            handleTestMessage(msg);
+        }
+        else if (llSubStringIndex(msg, "STATUS") == 0) {
+            handleStatusRequest(msg);
+        }
+        else {
+            // Handle unknown message types
+            if (DEBUG_MODE) {
+                llOwnerSay("Unknown message received: " + msg);
+            }
+        }
+        
+        updateDisplay();
+    }
+    
+    listen(integer channel, string name, key id, string message) {
+        // Handle chat commands from owner
+        if (id == llGetOwner()) {
+            if (message == "/hud status") {
+                reportStatus();
+            }
+            else if (message == "/hud reset") {
+                llOwnerSay("Resetting HUD...");
+                llResetScript();
+            }
+            else if (message == "/hud debug") {
+                DEBUG_MODE = !DEBUG_MODE;
+                llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
+            }
+        }
+    }
+    
+    timer() {
+        // Check for heartbeat timeout
+        float currentTime = llGetTime();
+        if (isConnected && (currentTime - lastHeartbeat) > HEARTBEAT_TIMEOUT) {
+            isConnected = FALSE;
+            llOwnerSay("Connection timeout - no heartbeat received");
+            updateDisplay();
+        }
+    }
+}
+
+// Handle URL messages
+handleUrlMessage(string msg) {
+    currentUrl = msg;
+    messageCount++;
+    isConnected = TRUE;
+    lastHeartbeat = llGetTime();
+    
+    if (DEBUG_MODE) {
+        llOwnerSay("URL Updated: " + currentUrl);
+    }
+    
+    // You can add URL validation here
+    if (llSubStringIndex(currentUrl, "websim") != -1) {
+        llOwnerSay("WebSim URL detected: " + extractDomain(currentUrl));
+    }
+}
+
+// Handle heartbeat messages
+handleHeartbeat(string msg) {
+    lastHeartbeat = llGetTime();
+    isConnected = TRUE;
+    
+    if (DEBUG_MODE) {
+        llOwnerSay("Heartbeat received");
+    }
+}
+
+// Handle test messages
+handleTestMessage(string msg) {
+    messageCount++;
+    llOwnerSay("Test message received: " + msg);
+    
+    // Echo back a confirmation
+    // Note: This would require a way to send data back to the web interface
+    // For now, we just log it
+}
+
+// Handle status requests
+handleStatusRequest(string msg) {
+    reportStatus();
+}
+
+// Report current status
+reportStatus() {
+    llOwnerSay("=== HUD Status Report ===");
+    llOwnerSay("Current URL: " + currentUrl);
+    llOwnerSay("Messages received: " + (string)messageCount);
+    llOwnerSay("Connection: " + (isConnected ? "Active" : "Inactive"));
+    llOwnerSay("Last heartbeat: " + (string)(llGetTime() - lastHeartbeat) + "s ago");
+    llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
+}
+
+// Update HUD display
+updateDisplay() {
+    string status = isConnected ? "Connected" : "Disconnected";
+    string displayText = "WebSim HUD\nStatus: " + status + "\nMessages: " + (string)messageCount;
+    
+    vector color = isConnected ? <0,1,0> : <1,0,0>;
+    llSetText(displayText, color, 1.0);
+}
+
+// Extract domain from URL for cleaner display
+string extractDomain(string url) {
+    integer start = llSubStringIndex(url, "://");
+    if (start != -1) {
+        start += 3;
+        integer end = llSubStringIndex(llGetSubString(url, start, -1), "/");
+        if (end != -1) {
+            return llGetSubString(url, start, start + end - 1);
+        }
+        return llGetSubString(url, start, -1);
+    }
+    return url;
+}</div>
+        </div>
+
+        <div class="script-section">
+            <div class="script-header">
+                <span class="script-title">Activity Log</span>
+                <button class="copy-btn" onclick="exportLog()">Export Log</button>
+            </div>
+            <div class="log-panel" id="logPanel">
+                <div class="log-entry">[System] WebSim HUD Controller initialized</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        let messageCount = 0;
+        let isConnected = false;
+        let heartbeatInterval;
+
+        // Enhanced data sending function with error handling
+        function sendDataToSL(data, messageType = 'URL') {
+            try {
+                if (window.external && window.external.LLMessage) {
+                    window.external.LLMessage(data);
+                    messageCount++;
+                    updateStatus();
+                    addLogEntry(`[${messageType}] Sent: ${data.substring(0, 50)}${data.length > 50 ? '...' : ''}`);
+                    showNotification(`${messageType} sent successfully`);
+                    return true;
+                } else {
+                    addLogEntry('[ERROR] SL Bridge not available');
+                    showNotification('SL Bridge not available', 'error');
+                    return false;
+                }
+            } catch (error) {
+                addLogEntry(`[ERROR] Failed to send data: ${error.message}`);
+                showNotification('Send failed', 'error');
+                return false;
+            }
+        }
+
+        // Auto-send current URL on page load
+        window.onload = function() {
+            const url = window.location.href;
+            if (sendDataToSL(url, 'URL')) {
+                isConnected = true;
+                startHeartbeat();
+            }
+            updateStatus();
+            addLogEntry('[System] Page loaded and URL sent');
+        };
+
+        // Start heartbeat to maintain connection
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(() => {
+                sendDataToSL('HEARTBEAT:' + Date.now(), 'HEARTBEAT');
+            }, 10000); // Every 10 seconds
+        }
+
+        // Control functions
+        function sendTestMessage() {
+            const testData = `TEST:${Date.now()}:WebSim HUD Test Message`;
+            sendDataToSL(testData, 'TEST');
+        }
+
+        function sendUrlUpdate() {
+            const url = window.location.href;
+            sendDataToSL(url, 'URL_UPDATE');
+        }
+
+        function sendHeartbeat() {
+            sendDataToSL('HEARTBEAT:' + Date.now(), 'MANUAL_HEARTBEAT');
+        }
+
+        // Update status display
+        function updateStatus() {
+            document.getElementById('connectionStatus').textContent = isConnected ? 'Connected' : 'Disconnected';
+            document.getElementById('currentUrl').textContent = window.location.href;
+            document.getElementById('messageCount').textContent = messageCount;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+
+        // Log management
+        function addLogEntry(message) {
+            const logPanel = document.getElementById('logPanel');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logPanel.appendChild(entry);
+            logPanel.scrollTop = logPanel.scrollHeight;
+
+            // Keep only last 100 entries
+            while (logPanel.children.length > 100) {
+                logPanel.removeChild(logPanel.firstChild);
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('logPanel').innerHTML = '<div class="log-entry">[System] Log cleared</div>';
+        }
+
+        function exportLog() {
+            const logEntries = Array.from(document.querySelectorAll('.log-entry')).map(entry => entry.textContent).join('\n');
+            const blob = new Blob([logEntries], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `websim-hud-log-${new Date().toISOString().split('T')[0]}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Copy script function
+        function copyScript() {
+            const scriptText = document.getElementById('lslScript').textContent;
+            navigator.clipboard.writeText(scriptText).then(() => {
+                showNotification('LSL Script copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = scriptText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('LSL Script copied to clipboard!');
+            });
+        }
+
+        // Notification system
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = 'notification show';
+            notification.style.background = type === 'error' ? '#dc3545' : '#28a745';
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        // Monitor URL changes for SPAs
+        let lastUrl = location.href;
+        new MutationObserver(() => {
+            const url = location.href;
+            if (url !== lastUrl) {
+                lastUrl = url;
+                sendDataToSL(url, 'URL_CHANGE');
+                addLogEntry('[System] URL changed detected');
+            }
+        }).observe(document, { subtree: true, childList: true });
+
+        // Update status every 5 seconds
+        setInterval(updateStatus, 5000);
+    </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
