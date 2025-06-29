@@ -360,7 +360,7 @@ default {
     state_entry() {
         // Initialize the HUD
         llOwnerSay("WebSim HUD initialized and ready.");
-        llOwnerSay("Enable media on this prim and set URL to: " + currentUrl);
+        llOwnerSay("Setting media URL to: " + currentUrl);
         
         // Set up listening for chat commands (optional)
         listenHandle = llListen(LISTEN_CHANNEL, "", llGetOwner(), "");
@@ -371,13 +371,16 @@ default {
         // Set a timer for heartbeat monitoring
         llSetTimerEvent(5.0);
         
-        // Enable media events
+        // Configure media settings properly
         llSetPrimMediaParams(0, [
             PRIM_MEDIA_AUTO_PLAY, TRUE,
             PRIM_MEDIA_AUTO_SCALE, TRUE,
             PRIM_MEDIA_PERMS_INTERACT, PRIM_MEDIA_PERM_ANYONE,
-            PRIM_MEDIA_PERMS_CONTROL, PRIM_MEDIA_PERM_ANYONE
+            PRIM_MEDIA_PERMS_CONTROL, PRIM_MEDIA_PERM_ANYONE,
+            PRIM_MEDIA_CURRENT_URL, currentUrl
         ]);
+        
+        llOwnerSay("Media configured. You should see the WebSim page on this HUD.");
     }
     
     // Handle media events from web page
@@ -386,9 +389,17 @@ default {
             list mediaParams = llGetPrimMediaParams(0, [PRIM_MEDIA_CURRENT_URL]);
             string mediaUrl = llList2String(mediaParams, 0);
             
+            if (DEBUG_MODE) {
+                llOwnerSay("Media URL changed to: " + mediaUrl);
+            }
+            
             if (llSubStringIndex(mediaUrl, "lslbridge://") == 0) {
                 // Remove lslbridge:// prefix and decode
                 string command = llUnescapeURL(llGetSubString(mediaUrl, 12, -1));
+                
+                if (DEBUG_MODE) {
+                    llOwnerSay("LSL Bridge command received: " + command);
+                }
                 
                 if (llSubStringIndex(command, "http") == 0) {
                     handleUrlMessage(command);
@@ -410,8 +421,8 @@ default {
                 
                 updateDisplay();
                 
-                // Navigate back to the main page
-                llSetPrimMediaParams(0, [PRIM_MEDIA_CURRENT_URL, currentUrl]);
+                // Navigate back to the main page after a short delay
+                llSetTimerEvent(1.0); // Use timer to navigate back
             }
         }
     }
@@ -453,6 +464,10 @@ default {
                 DEBUG_MODE = !DEBUG_MODE;
                 llOwnerSay("Debug mode: " + (string)DEBUG_MODE);
             }
+            else if (message == "/hud refresh") {
+                llOwnerSay("Refreshing media URL...");
+                llSetPrimMediaParams(0, [PRIM_MEDIA_CURRENT_URL, currentUrl]);
+            }
             else if (message == "/hud test") {
                 llOwnerSay("Sending test message to web page...");
                 sendToWebPage("TEST_FROM_LSL:" + (string)llGetUnixTime());
@@ -467,6 +482,16 @@ default {
             isConnected = FALSE;
             llOwnerSay("Connection timeout - no heartbeat received");
             updateDisplay();
+        }
+        
+        // If we're not on the main URL, navigate back
+        list mediaParams = llGetPrimMediaParams(0, [PRIM_MEDIA_CURRENT_URL]);
+        string mediaUrl = llList2String(mediaParams, 0);
+        if (llSubStringIndex(mediaUrl, "lslbridge://") == 0) {
+            if (DEBUG_MODE) {
+                llOwnerSay("Navigating back to main page from bridge URL");
+            }
+            llSetPrimMediaParams(0, [PRIM_MEDIA_CURRENT_URL, currentUrl]);
         }
     }
 }</div>
@@ -528,13 +553,11 @@ Note: This creates a direct communication channel between the browser running in
 
     <div class="notification" id="notification"></div>
 
-    <!-- Hidden iframe for LSL bridge communication -->
-    <iframe id="lslBridge" style="display: none; width: 1px; height: 1px;" src="about:blank"></iframe>
-
     <script>
         let messageCount = 0;
         let isConnected = false;
         let heartbeatInterval;
+        let pendingNavigation = false;
 
         // Function to receive messages from LSL
         window.receiveLSLMessage = function(message) {
@@ -547,75 +570,117 @@ Note: This creates a direct communication channel between the browser running in
             showNotification('Message from LSL: ' + message.substring(0, 30) + '...');
         };
 
-        // Fixed data sending function for media communication
+        // Fixed data sending function for Second Life media communication
         function sendDataToSL(data, messageType = 'URL') {
             try {
-                // Use hidden iframe method to prevent main page navigation issues
-                const iframe = document.getElementById('lslBridge');
+                if (pendingNavigation) {
+                    addLogEntry('[WARNING] Navigation already pending, skipping send');
+                    return false;
+                }
+
+                pendingNavigation = true;
                 const mediaUrl = 'lslbridge://' + encodeURIComponent(data);
                 
-                // Set iframe source instead of main window to prevent freezing
-                iframe.src = mediaUrl;
+                addLogEntry(`[${messageType}] Attempting to send: ${data}`);
                 
-                // Reset iframe after short delay
-                setTimeout(() => {
-                    iframe.src = 'about:blank';
-                }, 100);
+                // For Second Life media communication, we need to navigate the actual window
+                // The LSL script will detect this as a CHANGED_MEDIA event
+                window.location.href = mediaUrl;
                 
-                messageCount++;
-                updateStatus();
-                addLogEntry(`[${messageType}] Sent: ${data.substring(0, 50)}${data.length > 50 ? '...' : ''}`);
-                showNotification(`${messageType} sent to LSL`);
+                // The page will navigate away and then the LSL script should navigate back
+                // We'll update counters when we return
                 
                 return true;
             } catch (error) {
+                pendingNavigation = false;
                 addLogEntry(`[ERROR] Failed to send data: ${error.message}`);
                 showNotification('Send failed: ' + error.message, 'error');
                 return false;
             }
         }
 
+        // Handle return from LSL navigation
+        window.addEventListener('pageshow', function(event) {
+            if (pendingNavigation) {
+                pendingNavigation = false;
+                messageCount++;
+                updateStatus();
+                addLogEntry('[SUCCESS] Data sent to LSL, returned to page');
+            }
+        });
+
         // Auto-send current URL on page load
         window.onload = function() {
-            addLogEntry('[System] Page loaded, initializing LSL communication...');
+            addLogEntry('[System] Page loaded in Second Life media system');
+            addLogEntry('[System] Waiting 3 seconds before initial communication...');
             
             setTimeout(() => {
+                // Get the actual websim URL, not the lslbridge URL
                 const url = window.location.href;
-                if (sendDataToSL(url, 'URL')) {
+                if (url.indexOf('lslbridge://') !== 0) {
+                    addLogEntry('[System] Sending initial URL to LSL...');
+                    if (sendDataToSL(url, 'INITIAL_URL')) {
+                        isConnected = true;
+                        startHeartbeat();
+                    }
+                } else {
+                    addLogEntry('[System] Detected LSL bridge URL, returning to normal page');
+                    // We're on a bridge URL, this means LSL is working
                     isConnected = true;
                     startHeartbeat();
                 }
                 updateStatus();
-            }, 2000); // Wait 2 seconds for page to fully load
+            }, 3000); // Wait 3 seconds for page to fully load
         };
 
-        // Start heartbeat to maintain connection - reduced frequency
+        // Start heartbeat to maintain connection - reduced frequency for SL
         function startHeartbeat() {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(() => {
-                sendDataToSL('HEARTBEAT:' + Date.now(), 'HEARTBEAT');
-            }, 30000); // Every 30 seconds instead of 10
+                if (!pendingNavigation) {
+                    sendDataToSL('HEARTBEAT:' + Date.now(), 'HEARTBEAT');
+                }
+            }, 60000); // Every 60 seconds for SL performance
         }
 
         // Control functions
         function sendTestMessage() {
+            if (pendingNavigation) {
+                showNotification('Please wait, communication in progress...', 'error');
+                return;
+            }
             const testData = `TEST:${Date.now()}:WebSim HUD Test Message`;
             sendDataToSL(testData, 'TEST');
         }
 
         function sendUrlUpdate() {
+            if (pendingNavigation) {
+                showNotification('Please wait, communication in progress...', 'error');
+                return;
+            }
             const url = window.location.href;
-            sendDataToSL(url, 'URL_UPDATE');
+            if (url.indexOf('lslbridge://') !== 0) {
+                sendDataToSL(url, 'URL_UPDATE');
+            } else {
+                showNotification('Cannot send bridge URL, please wait for page to return', 'error');
+            }
         }
 
         function sendHeartbeat() {
+            if (pendingNavigation) {
+                showNotification('Please wait, communication in progress...', 'error');
+                return;
+            }
             sendDataToSL('HEARTBEAT:' + Date.now(), 'MANUAL_HEARTBEAT');
         }
 
         // Update status display
         function updateStatus() {
-            document.getElementById('connectionStatus').textContent = isConnected ? 'Connected' : 'Checking...';
-            document.getElementById('currentUrl').textContent = window.location.href;
+            const currentUrl = window.location.href;
+            const isBridgeUrl = currentUrl.indexOf('lslbridge://') === 0;
+            
+            document.getElementById('connectionStatus').textContent = isConnected ? 'Connected' : 'Connecting...';
+            document.getElementById('currentUrl').textContent = isBridgeUrl ? 'LSL Bridge Active' : currentUrl;
             document.getElementById('messageCount').textContent = messageCount;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
         }
@@ -696,19 +761,11 @@ Note: This creates a direct communication channel between the browser running in
             }, 3000);
         }
 
-        // Monitor URL changes for SPAs
-        let lastUrl = location.href;
-        new MutationObserver(() => {
-            const url = location.href;
-            if (url !== lastUrl) {
-                lastUrl = url;
-                sendDataToSL(url, 'URL_CHANGE');
-                addLogEntry('[System] URL changed detected');
-            }
-        }).observe(document, { subtree: true, childList: true });
-
         // Update status every 5 seconds
         setInterval(updateStatus, 5000);
+        
+        // Initial status update
+        updateStatus();
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
